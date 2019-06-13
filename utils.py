@@ -77,9 +77,7 @@ def play_wav_snippet(audio_file):
     return ipdisplay.Audio(audio_file)
 
 
-dataclass
-
-
+@dataclass
 class Plotter:
     """
         Periodic Plotter
@@ -116,7 +114,7 @@ def create_progress_text(msg):
     keys = [key[1] for key in Formatter().parse(msg)]
     ids = {key: float('nan') for key in keys if key}
 
-    return progressbar.FormatCustomText(msg, ids)
+    return progressbar.FormatLabel(msg, ids)
 
 
 def create_progress_bar(label=None):
@@ -124,9 +122,9 @@ def create_progress_bar(label=None):
         Returns a progressbar instance
     """
     if not label:
-        label = progressbar.FormatCustomText('')
+        label = progressbar.FormatLabel('')
 
-    pgrbar = progressbar.Progressbar(widgets=[
+    pgrbar = progressbar.ProgressBar(widgets=[
         progressbar.Percentage(),
         progressbar.Bar(),
         progressbar.AdaptiveETA(),
@@ -135,3 +133,31 @@ def create_progress_bar(label=None):
     ])
 
     return pgrbar
+
+
+progress_bar_widgets = [
+    'Training: ', progressbar.Percentage(),
+    ' ',
+    progressbar.Bar(marker='#',
+                    left='[',
+                    right=']'
+                    ),
+    ' ',
+    progressbar.ETA(), ' '
+]
+
+
+def get_progress_bar(process='Training'):
+    """
+        Creates a progressbar widget for a display of
+        a running process.
+
+        Parameters
+        ----------
+        process: str
+            Name of the process
+    """
+    widget = progress_bar_widgets[:]
+    widget[0] = process if process else widget[0]
+
+    return progressbar.ProgressBar(widgets=widget)
