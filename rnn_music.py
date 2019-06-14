@@ -2,6 +2,7 @@ import time
 import os
 import functools
 import numpy as np
+from utils import *
 import tensorflow as tf
 tf.enable_eager_execution()
 
@@ -90,10 +91,12 @@ def build_model(vocab_size, embedding_dims, rnn_units, batch_size):
     return model
 
 
-model = build_model(vocab_size=vocab_size, embedding_dims=embedding_dims,
-                    rnn_units=rnn_units, batch_size=batch_size)
+model = build_model(vocab_size, embedding_dims,
+                    rnn_units, batch_size=batch_size)
 model.summary()
 
+
+"""
 for input_ex_batch, target_ex_batch in dataset.take(1):
     example_batch_predictions = model(input_ex_batch)
     # print(example_batch_predictions.shape, '  ~ ',
@@ -107,20 +110,23 @@ sample_indices = tf.squeeze(sample_indices, axis=-1)
 # print('Input: ', ''.join(idx_to_char[input_ex_batch[0]]))
 # print('Next char predictions: ', ''.join(idx_to_char[sample_indices]))
 
+"""
 
 #
 # Train Model
 ###
 
 # Loss
+
+
 def compute_loss(labels, logits):
     return tf.keras.backend.sparse_categorical_crossentropy(
         labels,
         logits, from_logits=True)
 
 
-example_batch_loss = compute_loss(target_ex_batch, example_batch_predictions)
-print('Scalar Loss: ', example_batch_loss.numpy().mean())
+# example_batch_loss = compute_loss(target_ex_batch, example_batch_predictions)
+# print('Scalar Loss: ', example_batch_loss.numpy().mean())
 
 # train
 epochs = 10
@@ -128,4 +134,71 @@ history = []
 
 optimizer = tf.train.AdamOptimizer()
 checkpoint_dir = '.training_checkpoint'
-chpnt_prefix = os.path.join(checkpoint_dir, f'chkpoint_{epoch}')
+chpnt_prefix = os.path.join(checkpoint_dir, 'chkpoint_{epoch}')
+
+plotter = Plotter(x_label='iterations', y_label='loss')
+
+for epoch in range(epochs):
+    # Initialize hidden state at start of epoch
+    hidden = model.reset_states()
+
+    # Enumerate training dataset
+    # progress_msg = create_progress_text('Loss : {loss:.2}')
+    progress_bar = create_progress_bar()
+
+    for input_, target in progress_bar(dataset):
+        with tf.GradientTape() as tape:
+            pred = model(input_)
+            loss = compute_loss(target, pred)
+
+    # Compute gradients and minimize
+    gradients = tape.gradient(loss, model.trainable_variables)
+    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+    history.append(loss.numpy().mean())
+    # progress_msg.update_mapping(loss=history[-1])
+    plotter.plot(history)
+    # Update model with new weights
+    model.save_weights(chpnt_prefix.format(epoch=epoch))
+
+# Restore checkpoint
+model = build_model(vocab_size, embedding_dims,
+                    rnn_units, batch_size=batch_size)
+model.load_weights(tf.train.latest_checkpoint(checkpoint_dir))
+model.build(tf.TensorShape(input_shape=[batch_size, None]))
+
+model.summary()
+
+
+def generate_text(model, start_string, gen_length=1500):
+    """
+        Generate test using the trained model
+    """
+    generated_text = []
+
+    input_eval = [char_to_idx[s] for s in start_string]
+    input_eval = tf.expand_dims(input_eval, 0)
+
+    model.reset_states()
+    bar = create_progress_bar()
+
+    for i in bar(range(gen_length)):
+        predictions = model(input_eval)
+
+        # Clear batch dimensions
+        predictions = tf.squeeze(predictions, 0)
+        predicted_id = tf.multinomial(
+            predictions, num_samples=1)[-1, 0].numpy()
+
+        # Pass predictions and previous hidden states as next inputs
+        input_eval = tf.expand_dims([predicted_id], 0)
+
+        # Add predicted character to generated text
+        generate_text.append(idx_to_char[predicted_id])
+
+    return start_string + ''.join(generated_text)
+
+
+text = generate_text(model, start_string='X')
+play_songs(text)
+print(text)
